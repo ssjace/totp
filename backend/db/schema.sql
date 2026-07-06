@@ -2,11 +2,13 @@
 -- Apply with: psql $DATABASE_URL -f backend/db/schema.sql
 
 CREATE TABLE IF NOT EXISTS users (
-  -- Auto-incrementing surrogate key. BIGSERIAL avoids int overflow at scale.
-  id               BIGSERIAL PRIMARY KEY,
+  -- Auto-incrementing surrogate key.
+  id               SERIAL PRIMARY KEY,
 
-  -- The identifier the user logs in with. Unique index enforced by the constraint.
-  username         TEXT NOT NULL UNIQUE,
+  -- The identifier the user logs in with. Max 20 chars, alphanumeric only.
+  -- VARCHAR(20) enforces the length at the DB level.
+  -- The CHECK constraint rejects anything that isn't a-z, A-Z, or 0-9.
+  username         VARCHAR(20) NOT NULL UNIQUE CHECK (username ~ '^[a-zA-Z0-9]+$'),
 
   -- AES-256-GCM ciphertext of the raw TOTP secret bytes (base64-encoded).
   -- The plaintext secret is never stored.
