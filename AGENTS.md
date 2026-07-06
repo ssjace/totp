@@ -42,6 +42,28 @@ Verify against actual `package.json` scripts if these drift — don't assume.
 - TOTP secret is AES-256-GCM encrypted at rest — plaintext secret must never be written to the DB, logs, or committed files. Key comes from `.env` (`ENCRYPTION_KEY`), never hardcoded.
 - Redis keys: `used:{username}:{counter}` (replay protection, TTL ~30s), `fail:{username}` (rate limit counter, TTL ~5min).
 
+## Flow — quick reference (for me)
+
+**Enrollment (once per username)**
+1. User submits a username
+2. Server generates a random secret, encrypts it, saves a row (`confirmed: false`)
+3. Server returns a QR code encoding `otpauth://totp/...`
+4. User scans it with an authenticator app — secret now lives on both sides
+5. User types the current code shown in the app, to prove the scan worked
+6. Server decrypts the secret, computes the expected code, compares → marks `confirmed: true`
+
+**Login (every time after)**
+1. User enters their username, presses "Login"
+2. Server looks up that username's row → gets the encrypted secret
+3. User reads the current code off their authenticator app, types it in
+4. Server decrypts the secret, computes the expected code for `T-1, T, T+1` (drift tolerance window)
+5. Match → login succeeds. No match → fail.
+6. Redis checks alongside step 4: reject if this code's time-window was already used (replay protection); reject if there have been too many recent failed attempts (rate limiting)
+
+**Why encryption, not hashing, for the secret:** the server needs the real secret back every login to recompute the code — hashing is one-way and would make that impossible. Security comes from keeping the encryption key separate from the database, not from the ciphertext being unbreakable.
+
+**Why the counter, not the code, identifies a Redis window:** `counter = floor(unix_time / 30)` identifies *which 30-second bucket* a code belongs to — that's what replay protection keys off, not the 6 digits themselves.
+
 ## Frontend / design
 
 - shadcn/ui + Tailwind only. No raw `.css` files, no other component/design libraries, no custom design system.
