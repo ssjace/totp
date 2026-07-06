@@ -52,7 +52,7 @@ Verify against actual `package.json` scripts if these drift — don't assume.
 
 - No direct commits to `main`; branch per unit of work (`feat/`, `fix/`, `chore/`, `docs/`).
 - Conventional Commits format for messages.
-- Open a PR once work is done on the branch. Follow the same conventional commits format - include a method to test (if applicable), and screenshots (if applicable).
+- Once work on a branch is done, **the agent must open the PR** using the `gh` CLI — never leave it for the human. Use `gh pr create --title "..." --body "..."`. Follow the same conventional commits format for the title; body must include what changed and how to test (and screenshots if UI changed).
 - Don't delete branches after merge.
 
 ## Code quality
