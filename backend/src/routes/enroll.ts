@@ -5,24 +5,13 @@ import QRCode from "qrcode";
 import { query } from "../db.js";
 import { encrypt, decrypt } from "../crypto.js";
 import { base32Encode, base32Decode, totp } from "../totp.js";
+import { getEncryptionKey } from "../config.js";
 
 const router = Router();
 
 // App name shown in the authenticator app UI (e.g. "TOTPDemo:alice").
 const APP_NAME = "TOTPDemo";
 
-// Read and validate the encryption key from the environment.
-// Called inside each handler so tests can set process.env before import.
-// Throws at startup if the variable is missing or the wrong length.
-function getKey(): Buffer {
-  const hex = process.env.ENCRYPTION_KEY;
-  if (!hex) throw new Error("ENCRYPTION_KEY is not set");
-  const key = Buffer.from(hex, "hex");
-  if (key.length !== 32) {
-    throw new Error("ENCRYPTION_KEY must be 32 bytes (64 hex chars)");
-  }
-  return key;
-}
 
 // Username rules: 1–20 alphanumeric characters.
 // The DB CHECK constraint enforces the same rule, but we check here too
@@ -65,7 +54,7 @@ router.post("/enroll", async (req, res) => {
     return;
   }
 
-  const key = getKey();
+  const key = getEncryptionKey();
 
   // 20 bytes = 160 bits of entropy — standard TOTP secret size.
   const secretBytes = randomBytes(20);
@@ -132,7 +121,7 @@ router.post("/enroll/confirm", async (req, res) => {
     return;
   }
 
-  const key = getKey();
+  const key = getEncryptionKey();
 
   // Row type matches exactly what the SELECT returns — narrowed at the
   // query call site so TypeScript knows the shape without any cast.
