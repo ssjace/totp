@@ -4,8 +4,17 @@ import { query } from "../db.js";
 import { decrypt } from "../crypto.js";
 import { base32Decode, totp } from "../totp.js";
 import { getEncryptionKey } from "../config.js";
+import redis from "../redis.js";
 
 const router = Router();
+
+const FAIL_LIMIT = 5;
+const FAIL_TTL_SECS = 300; // ~5 min
+
+// A counter is valid across up to 3 windows (T-1, T, T+1), a 90s span.
+// The replay key must outlive that span so a used code can't be submitted
+// again before it rotates out of all valid windows.
+const REPLAY_TTL_SECS = 90;
 
 router.post("/login/verify", async (req, res) => {
   const username: unknown = req.body?.username;
@@ -17,6 +26,14 @@ router.post("/login/verify", async (req, res) => {
   }
   if (typeof code !== "string" || !code) {
     res.status(400).json({ error: "code is required" });
+    return;
+  }
+
+  // Rate-limit check — before any DB or crypto work.
+  const failCount = Number(await redis.get(`fail:${username}`) ?? 0);
+  if (failCount >= FAIL_LIMIT) {
+    const retryAfter = await redis.ttl(`fail:${username}`);
+    res.status(429).json({ error: "too many attempts", retryAfter });
     return;
   }
 
@@ -61,13 +78,37 @@ router.post("/login/verify", async (req, res) => {
   }
 
   const now = Math.floor(Date.now() / 1000);
-  // T-1/T/T+1: one window either side covers ±30s clock skew and network latency.
-  const valid = [now - 30, now, now + 30].some(t => totp(secretBytes, t) === code);
+  const windows = [now - 30, now, now + 30];
+  const matchedAt = windows.find(t => totp(secretBytes, t) === code);
 
-  if (!valid) {
-    res.status(401).json({ error: "invalid code" });
+  // Increment the failure counter and return the remaining attempts.
+  // Sets TTL only on the first failure so subsequent increments don't
+  // reset the expiry window.
+  async function recordFailure(): Promise<number> {
+    const next = await redis.incr(`fail:${username}`);
+    if (next === 1) await redis.expire(`fail:${username}`, FAIL_TTL_SECS);
+    return Math.max(0, FAIL_LIMIT - next);
+  }
+
+  if (matchedAt === undefined) {
+    const attemptsRemaining = await recordFailure();
+    res.status(401).json({ error: "invalid code", attemptsRemaining });
     return;
   }
+
+  // Each window's counter is floor(t/30). Keyed by counter so one used
+  // code can't be submitted again while it's still in any valid window.
+  const counter = Math.floor(matchedAt / 30);
+  const replayKey = `used:${username}:${counter}`;
+
+  if (await redis.get(replayKey)) {
+    const attemptsRemaining = await recordFailure();
+    res.status(401).json({ error: "code already used", attemptsRemaining });
+    return;
+  }
+
+  await redis.set(replayKey, "1", "EX", REPLAY_TTL_SECS);
+  await redis.del(`fail:${username}`);
 
   res.json({ ok: true });
 });
