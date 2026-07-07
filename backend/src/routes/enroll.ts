@@ -20,19 +20,6 @@ function isValidUsername(s: string): boolean {
   return /^[a-zA-Z0-9]{1,20}$/.test(s);
 }
 
-// Narrows an unknown caught value to a Postgres error with a specific
-// error code. The `pg` driver attaches a `code` string to every error
-// it throws; error code 23505 = unique_violation.
-// Using `in` lets TypeScript verify the property exists before we read it.
-function isPgCode(err: unknown, code: string): boolean {
-  return (
-    err !== null &&
-    typeof err === "object" &&
-    "code" in err &&
-    err.code === code
-  );
-}
-
 // POST /enroll
 // Body: { username: string }
 //
@@ -44,6 +31,14 @@ function isPgCode(err: unknown, code: string): boolean {
 // 5. Build the otpauth:// URI and turn it into a QR code data URL.
 // 6. Return { username, uri, qr } — paste `qr` into a browser address
 //    bar to view and scan the QR code.
+//
+// A username that already has a *confirmed* row is a real conflict (409).
+// One that exists but was never confirmed just means someone started
+// enrolling and never finished — we overwrite that row with a fresh secret
+// and hand back a new QR, same as if it were brand new. The ON CONFLICT
+// ... WHERE clause does the "is it confirmed" check atomically: if the
+// existing row is confirmed, the WHERE fails, no row is written, and
+// RETURNING comes back empty.
 router.post("/enroll", async (req, res) => {
   // req.body is `any` from Express; pull fields out as unknown so TypeScript
   // forces us to check the types before using them.
@@ -65,17 +60,21 @@ router.post("/enroll", async (req, res) => {
   const { ciphertext, iv, authTag } = encrypt(base32Secret, key);
 
   try {
-    await query(
+    const { rowCount } = await query(
       `INSERT INTO users (username, encrypted_secret, iv, auth_tag)
-       VALUES ($1, $2, $3, $4)`,
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (username) DO UPDATE
+         SET encrypted_secret = EXCLUDED.encrypted_secret,
+             iv = EXCLUDED.iv,
+             auth_tag = EXCLUDED.auth_tag
+         WHERE users.confirmed = false`,
       [username, ciphertext, iv, authTag],
     );
-  } catch (err: unknown) {
-    if (isPgCode(err, "23505")) {
-      // The username column has a UNIQUE constraint; 23505 means duplicate.
+    if (rowCount === 0) {
       res.status(409).json({ error: "username already taken" });
       return;
     }
+  } catch (err: unknown) {
     console.error("[enroll] db insert failed:", err);
     res.status(500).json({ error: "internal server error" });
     return;
