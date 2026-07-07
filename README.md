@@ -4,7 +4,7 @@ A hand-rolled [RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238) TOTP imp
 
 > **Local-only.** Runs entirely on your machine via Docker Compose. Nothing is deployed to the cloud.
 
-[![TOTP demo video](https://ssjace.github.io/assets/totp-poster.jpg)](https://ssjace.github.io/assets/totp-demo.mp4)
+<video src="assets/totp-demo.mp4" poster="assets/totp-poster.jpg" controls width="100%"></video>
 
 ---
 
