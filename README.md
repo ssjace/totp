@@ -4,6 +4,8 @@ A hand-rolled [RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238) TOTP imp
 
 > **Local-only.** Runs entirely on your machine via Docker Compose. Nothing is deployed to the cloud.
 
+[![TOTP demo video](https://ssjace.github.io/assets/totp-poster.jpg)](https://ssjace.github.io/assets/totp-demo.mp4)
+
 ---
 
 ## Prerequisites
@@ -144,15 +146,15 @@ sequenceDiagram
     U->>F: Enter username
     F->>B: POST /enroll { username }
     B->>B: Generate 20 random bytes (secret)
-    B->>B: Base32-encode → AES-256-GCM encrypt
+    B->>B: Base32-encode, AES-256-GCM encrypt
     B->>DB: INSERT encrypted_secret, iv, auth_tag (confirmed=false)
-    B->>F: { qr: "data:image/png;base64,..." }
+    B->>F: { qr: data URI }
     F->>U: Display QR code
     U->>A: Scan QR code
     Note over A: Secret now lives on both sides
     U->>F: Type 6-digit code shown in app
     F->>B: POST /enroll/confirm { username, code }
-    B->>DB: Fetch encrypted row → decrypt secret
+    B->>DB: Fetch row, decrypt secret
     B->>B: Compute TOTP for T and T-1
     B->>DB: UPDATE confirmed = true
     B->>F: { ok: true }
