@@ -176,11 +176,9 @@ export default function App() {
   }
 
   function copySecret() {
-    try {
-      navigator.clipboard.writeText(secret)
-    } catch (err) {
-      console.error('[copySecret] clipboard write failed:', err)
-    }
+    navigator.clipboard
+      .writeText(secret)
+      .catch(err => console.error('[copySecret] clipboard write failed:', err))
     setCopied(true)
     clearTimeout(copyTimeout.current)
     copyTimeout.current = setTimeout(() => setCopied(false), 1500)
@@ -291,9 +289,6 @@ export default function App() {
                   label="Continue"
                   onClick={handleContinue}
                 />
-                <p className="mt-4 text-center text-xs text-muted-foreground">
-                  New usernames start device linking automatically.
-                </p>
               </div>
             )}
 
@@ -315,7 +310,7 @@ export default function App() {
                 {secret && (
                   <button
                     onClick={copySecret}
-                    className="relative grid place-items-center rounded-lg border border-border bg-white/[0.03] px-3 py-2 font-mono text-[12.5px] tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+                    className="relative mx-auto grid w-fit place-items-center rounded-lg border border-border bg-white/[0.03] px-3 py-2 font-mono text-[12.5px] tracking-wide text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <span
                       className={cn(
@@ -363,6 +358,7 @@ export default function App() {
                     onChange={setCode}
                     onComplete={handleVerify}
                     disabled={locked}
+                    autoFocus
                   >
                     <InputOTPGroup>
                       <InputOTPSlot index={0} className="h-14 w-12 text-xl font-semibold" />
